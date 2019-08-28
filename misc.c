@@ -257,7 +257,7 @@ waitrfd(int fd, int *timeoutp)
 		errno = oerrno;
 		if (r > 0)
 			return 0;
-		else if (r == -1 && errno != EAGAIN)
+		else if (r == -1 && errno != EAGAIN && errno != EINTR)
 			return -1;
 		else if (r == 0)
 			break;
@@ -290,7 +290,7 @@ timeout_connect(int sockfd, const struct sockaddr *serv_addr,
 		/* Succeeded already? */
 		unset_nonblock(sockfd);
 		return 0;
-	} else if (errno != EINPROGRESS)
+	} else if (errno != EINPROGRESS && errno != EINTR)
 		return -1;
 
 	if (waitrfd(sockfd, timeoutp) == -1)
