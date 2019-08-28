@@ -1,4 +1,4 @@
-/* $OpenBSD: auth2-hostbased.c,v 1.33 2018/01/23 05:27:21 djm Exp $ */
+/* $OpenBSD: auth2-hostbased.c,v 1.40 2019/01/19 21:43:56 djm Exp $ */
 /*
  * Copyright (c) 2000 Markus Friedl.  All rights reserved.
  *
@@ -34,7 +34,7 @@
 #include "xmalloc.h"
 #include "ssh2.h"
 #include "packet.h"
-#include "buffer.h"
+#include "sshbuf.h"
 #include "log.h"
 #include "misc.h"
 #include "servconf.h"
@@ -67,10 +67,6 @@ userauth_hostbased(struct ssh *ssh)
 	size_t alen, blen, slen;
 	int r, pktype, authenticated = 0;
 
-	if (!authctxt->valid) {
-		debug2("%s: disabled because of invalid user", __func__);
-		return 0;
-	}
 	/* XXX use sshkey_froms() */
 	if ((r = sshpkt_get_cstring(ssh, &pkalg, &alen)) != 0 ||
 	    (r = sshpkt_get_string(ssh, &pkblob, &blen)) != 0 ||
@@ -111,10 +107,21 @@ userauth_hostbased(struct ssh *ssh)
 		    "signature format");
 		goto done;
 	}
-	if (match_pattern_list(sshkey_ssh_name(key),
-	    options.hostbased_key_types, 0) != 1) {
+	if (match_pattern_list(pkalg, options.hostbased_key_types, 0) != 1) {
 		logit("%s: key type %s not in HostbasedAcceptedKeyTypes",
 		    __func__, sshkey_type(key));
+		goto done;
+	}
+	if ((r = sshkey_check_cert_sigtype(key,
+	    options.ca_sign_algorithms)) != 0) {
+		logit("%s: certificate signature algorithm %s: %s", __func__,
+		    (key->cert == NULL || key->cert->signature_type == NULL) ?
+		    "(null)" : key->cert->signature_type, ssh_err(r));
+		goto done;
+	}
+
+	if (!authctxt->valid || authctxt->user == NULL) {
+		debug2("%s: disabled because of invalid user", __func__);
 		goto done;
 	}
 
@@ -140,7 +147,8 @@ userauth_hostbased(struct ssh *ssh)
 
 	/* test for allowed key and correct signature */
 	authenticated = 0;
-	if (PRIVSEP(hostbased_key_allowed(authctxt->pw, cuser, chost, key)) &&
+	if (PRIVSEP(hostbased_key_allowed(ssh, authctxt->pw, cuser,
+	    chost, key)) &&
 	    PRIVSEP(sshkey_verify(key, sig, slen,
 	    sshbuf_ptr(b), sshbuf_len(b), pkalg, ssh->compat)) == 0)
 		authenticated = 1;
@@ -160,10 +168,9 @@ done:
 
 /* return 1 if given hostkey is allowed */
 int
-hostbased_key_allowed(struct passwd *pw, const char *cuser, char *chost,
-    struct sshkey *key)
+hostbased_key_allowed(struct ssh *ssh, struct passwd *pw,
+    const char *cuser, char *chost, struct sshkey *key)
 {
-	struct ssh *ssh = active_state; /* XXX */
 	const char *resolvedname, *ipaddr, *lookup, *reason;
 	HostStatus host_status;
 	int len;

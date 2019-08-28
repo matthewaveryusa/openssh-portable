@@ -108,10 +108,6 @@ enum
 #  define MAXPATHLEN PATH_MAX
 # else /* PATH_MAX */
 #  define MAXPATHLEN 64
-/* realpath uses a fixed buffer of size MAXPATHLEN, so force use of ours */
-#  ifndef BROKEN_REALPATH
-#   define BROKEN_REALPATH 1
-#  endif /* BROKEN_REALPATH */
 # endif /* PATH_MAX */
 #endif /* MAXPATHLEN */
 
@@ -658,12 +654,6 @@ struct winsize {
 
 #if defined(KRB5) && !defined(HEIMDAL)
 #  define krb5_get_err_text(context,code) error_message(code)
-#endif
-
-#if defined(SKEYCHALLENGE_4ARG)
-# define _compat_skeychallenge(a,b,c,d) skeychallenge(a,b,c,d)
-#else
-# define _compat_skeychallenge(a,b,c,d) skeychallenge(a,b,c)
 #endif
 
 /* Maximum number of file descriptors available */
